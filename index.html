@@ -1,9 +1,8 @@
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tetris 1v1</title>
+<title>1v1 Tetris Rounded Board with Ghost Piece</title>
 <style>
   body {
     background: white;
@@ -13,7 +12,7 @@
     font-family: Arial, sans-serif;
   }
   canvas {
-    border: 0px solid black; /* 외곽선 제거 */
+    border: 0px; /* 외곽선 제거, 직접 둥근 보드 그릴 예정 */
   }
 </style>
 </head>
@@ -31,7 +30,6 @@ const ROWS = 20;
 
 ctx.scale(SCALE, SCALE);
 
-// 색상 테마
 const COLORS_P1 = [null, "#4aa3ff","#357edd","#5fa8ff","#7fbfff","#4acbff","#6a8dff","#3b6cff"];
 const COLORS_P2 = [null, "#ff4a4a","#dd3535","#ff6a5f","#ff7f7f","#ff4acb","#c86aff","#ff3b3b"];
 
@@ -154,25 +152,62 @@ function hardDrop(p){
   resetPlayer(p);
 }
 
-document.addEventListener("keydown",e=>{
-  if(gameOver && e.key.toLowerCase()==="r") location.reload();
+// 고스트 블록 그리기 (하드드랍 위치 표시)
+function drawGhost(p, ox){
+  const ghostMatrix = p.matrix;
+  let ghostPos = {x: p.pos.x, y: p.pos.y};
 
-  if(!gameOver){
-    // P1 좌우 반전: 왼쪽 → →, 오른쪽 → ←
-    if(e.key==="ArrowRight"){p1.pos.x--; if(collide(p1))p1.pos.x++;}
-    if(e.key==="ArrowLeft"){p1.pos.x++; if(collide(p1))p1.pos.x--;}
-    if(e.key==="ArrowDown") drop(p1);
-    if(e.key==="ArrowUp"){ const m=p1.matrix; p1.matrix=rotate(m); if(collide(p1))p1.matrix=m; }
-    if(e.key==="/") hardDrop(p1);
+  while(!collide({...p, pos:{x:ghostPos.x, y:ghostPos.y+1}, matrix:ghostMatrix})){
+    ghostPos.y++;
+  }
 
-    // P2 좌우 반전: A ←, D → (기존 반전 X)
-    if(e.key==="d"){p2.pos.x--; if(collide(p2))p2.pos.x++;}
-    if(e.key==="a"){p2.pos.x++; if(collide(p2))p2.pos.x--;}
-    if(e.key==="s") drop(p2);
-    if(e.key==="w"){ const m=p2.matrix; p2.matrix=rotate(m); if(collide(p2))p2.matrix=m; }
-    if(e.key==="Shift") hardDrop(p2);
+  ghostMatrix.forEach((row,y)=>{
+    row.forEach((v,x)=>{
+      if(v){
+        ctx.fillStyle = p.colors[v] + "88"; // 반투명
+        ctx.fillRect(x + ghostPos.x + ox, y + ghostPos.y, 1, 1);
+      }
+    });
+  });
+}
+
+document.addEventListener("keydown", e => {
+  if (gameOver && e.key.toLowerCase() === "r") location.reload();
+
+  if (!gameOver) {
+    // P1: WASD + Shift
+    if (e.key === "a") { p1.pos.x--; if (collide(p1)) p1.pos.x++; }
+    if (e.key === "d") { p1.pos.x++; if (collide(p1)) p1.pos.x--; }
+    if (e.key === "s") drop(p1);
+    if (e.key === "w") { const m = p1.matrix; p1.matrix = rotate(m); if (collide(p1)) p1.matrix = m; }
+    if (e.key === "Shift") hardDrop(p1);
+
+    // P2: 방향키 + /
+    if (e.key === "ArrowLeft") { p2.pos.x--; if (collide(p2)) p2.pos.x++; }
+    if (e.key === "ArrowRight") { p2.pos.x++; if (collide(p2)) p2.pos.x--; }
+    if (e.key === "ArrowDown") drop(p2);
+    if (e.key === "ArrowUp") { const m = p2.matrix; p2.matrix = rotate(m); if (collide(p2)) p2.matrix = m; }
+    if (e.key === "/") hardDrop(p2);
   }
 });
+
+// 둥근 사각형 보드 그리기
+function drawBoardOutline(xOffset){
+  const radius = 0.3;
+  ctx.strokeStyle = "black";
+  ctx.lineWidth = 0.1;
+  ctx.beginPath();
+  ctx.moveTo(xOffset+radius, 0);
+  ctx.lineTo(xOffset+COLS-radius,0);
+  ctx.quadraticCurveTo(xOffset+COLS,0,xOffset+COLS,radius);
+  ctx.lineTo(xOffset+COLS,ROWS-radius);
+  ctx.quadraticCurveTo(xOffset+COLS,ROWS,xOffset+COLS-radius,ROWS);
+  ctx.lineTo(xOffset+radius,ROWS);
+  ctx.quadraticCurveTo(xOffset,ROWS,xOffset,ROWS-radius);
+  ctx.lineTo(xOffset, radius);
+  ctx.quadraticCurveTo(xOffset,0,xOffset+radius,0);
+  ctx.stroke();
+}
 
 function drawUI(p, ox){
   ctx.fillStyle = p.colors[1];
@@ -195,8 +230,13 @@ function update(t=0){
   [p1,p2].forEach(p=>{
     ctx.save();
     if(p.shake>0){ ctx.translate((Math.random()-0.5)*0.2,(Math.random()-0.5)*0.2); p.shake--; }
+
+    // 고스트 블록 먼저
+    drawGhost(p, p.offsetX);
+
     drawMatrix(p.arena,{x:0,y:0},p.offsetX,p.colors);
     drawMatrix(p.matrix,p.pos,p.offsetX,p.colors);
+    drawBoardOutline(p.offsetX);
     ctx.restore();
   });
 
