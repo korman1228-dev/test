@@ -1,0 +1,223 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Tetris 1v1</title>
+<style>
+  body {
+    background: white;
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+    font-family: Arial, sans-serif;
+  }
+  canvas {
+    border: 0px solid black; /* 외곽선 제거 */
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game" width="650" height="620"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const SCALE = 20;
+const COLS = 10;
+const ROWS = 20;
+
+ctx.scale(SCALE, SCALE);
+
+// 색상 테마
+const COLORS_P1 = [null, "#4aa3ff","#357edd","#5fa8ff","#7fbfff","#4acbff","#6a8dff","#3b6cff"];
+const COLORS_P2 = [null, "#ff4a4a","#dd3535","#ff6a5f","#ff7f7f","#ff4acb","#c86aff","#ff3b3b"];
+
+const SHAPES = [
+  [],
+  [[1,1,1,1]],
+  [[2,0,0],[2,2,2]],
+  [[0,0,3],[3,3,3]],
+  [[4,4],[4,4]],
+  [[0,5,5],[5,5,0]],
+  [[0,6,0],[6,6,6]],
+  [[7,7,0],[0,7,7]]
+];
+
+function matrix(w,h){ return Array.from({length:h},()=>Array(w).fill(0)); }
+
+function createPlayer(offsetX, colors, name){
+  return {
+    arena: matrix(COLS, ROWS),
+    pos:{x:0,y:0},
+    matrix:null,
+    next:null,
+    score:0,
+    best:0,
+    shake:0,
+    offsetX,
+    colors,
+    name,
+    alive:true
+  };
+}
+
+const p1 = createPlayer(0, COLORS_P1, "P1");
+const p2 = createPlayer(16, COLORS_P2, "P2");
+
+let gameOver=false;
+let winner=null;
+
+function drawMatrix(mat, offset, ox, colors){
+  mat.forEach((row,y)=>{
+    row.forEach((v,x)=>{
+      if(v){
+        ctx.fillStyle = colors[v];
+        ctx.fillRect(x+offset.x+ox, y+offset.y, 1, 1);
+        ctx.strokeStyle="black";
+        ctx.lineWidth=0.05;
+        ctx.strokeRect(x+offset.x+ox, y+offset.y, 1, 1);
+      }
+    });
+  });
+}
+
+function collide(p){
+  for(let y=0;y<p.matrix.length;y++){
+    for(let x=0;x<p.matrix[y].length;x++){
+      if(p.matrix[y][x] && (p.arena[y+p.pos.y]?.[x+p.pos.x] ?? 1)) return true;
+    }
+  }
+  return false;
+}
+
+function merge(p){
+  p.matrix.forEach((row,y)=>{
+    row.forEach((v,x)=>{
+      if(v) p.arena[y+p.pos.y][x+p.pos.x] = v;
+    });
+  });
+}
+
+function rotate(mat){ return mat[0].map((_,i)=>mat.map(r=>r[i]).reverse()); }
+
+function sweep(p){
+  let lines=0;
+  for(let y=p.arena.length-1;y>=0;y--){
+    if(p.arena[y].every(v=>v)){
+      p.arena.splice(y,1);
+      p.arena.unshift(Array(COLS).fill(0));
+      lines++;
+      y++;
+    }
+  }
+  if(lines){
+    p.score += lines*10;
+    p.best = Math.max(p.score,p.best);
+    p.shake = 8;
+  }
+}
+
+function randomPiece(){ return SHAPES[Math.floor(Math.random()*7)+1]; }
+
+function resetPlayer(p){
+  p.matrix = p.next || randomPiece();
+  p.next = randomPiece();
+  p.pos.y=0;
+  p.pos.x=(COLS/2|0)-(p.matrix[0].length/2|0);
+  if(collide(p)){
+    p.alive=false;
+    gameOver=true;
+    winner=(p===p1)?p2:p1;
+  }
+}
+
+function drop(p){
+  if(!p.alive || gameOver) return;
+  p.pos.y++;
+  if(collide(p)){
+    p.pos.y--;
+    merge(p);
+    sweep(p);
+    resetPlayer(p);
+  }
+}
+
+function hardDrop(p){
+  if(!p.alive || gameOver) return;
+  while(!collide(p)) p.pos.y++;
+  p.pos.y--;
+  merge(p);
+  sweep(p);
+  resetPlayer(p);
+}
+
+document.addEventListener("keydown",e=>{
+  if(gameOver && e.key.toLowerCase()==="r") location.reload();
+
+  if(!gameOver){
+    // P1 좌우 반전: 왼쪽 → →, 오른쪽 → ←
+    if(e.key==="ArrowRight"){p1.pos.x--; if(collide(p1))p1.pos.x++;}
+    if(e.key==="ArrowLeft"){p1.pos.x++; if(collide(p1))p1.pos.x--;}
+    if(e.key==="ArrowDown") drop(p1);
+    if(e.key==="ArrowUp"){ const m=p1.matrix; p1.matrix=rotate(m); if(collide(p1))p1.matrix=m; }
+    if(e.key==="/") hardDrop(p1);
+
+    // P2 좌우 반전: A ←, D → (기존 반전 X)
+    if(e.key==="d"){p2.pos.x--; if(collide(p2))p2.pos.x++;}
+    if(e.key==="a"){p2.pos.x++; if(collide(p2))p2.pos.x--;}
+    if(e.key==="s") drop(p2);
+    if(e.key==="w"){ const m=p2.matrix; p2.matrix=rotate(m); if(collide(p2))p2.matrix=m; }
+    if(e.key==="Shift") hardDrop(p2);
+  }
+});
+
+function drawUI(p, ox){
+  ctx.fillStyle = p.colors[1];
+  ctx.font="1px Arial";
+  ctx.fillText(p.name, ox,1);
+  ctx.fillText("SCORE: "+p.score, ox,2);
+  ctx.fillText("BEST: "+p.best, ox,3);
+  ctx.fillText("NEXT", ox+11,2);
+  drawMatrix(p.next,{x:ox+11,y:2.5},0,p.colors);
+}
+
+let last=0, dropCounter=0;
+function update(t=0){
+  const delta=t-last; last=t;
+  dropCounter+=delta;
+  if(dropCounter>500){ drop(p1); drop(p2); dropCounter=0; }
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  [p1,p2].forEach(p=>{
+    ctx.save();
+    if(p.shake>0){ ctx.translate((Math.random()-0.5)*0.2,(Math.random()-0.5)*0.2); p.shake--; }
+    drawMatrix(p.arena,{x:0,y:0},p.offsetX,p.colors);
+    drawMatrix(p.matrix,p.pos,p.offsetX,p.colors);
+    ctx.restore();
+  });
+
+  drawUI(p1,0);
+  drawUI(p2,16);
+
+  if(gameOver){
+    ctx.fillStyle="black";
+    ctx.font="2px Arial";
+    ctx.fillText(winner.name+" WINS!",6.5,10);
+    ctx.font="1px Arial";
+    ctx.fillText("Press R to Restart",6,12);
+  }
+
+  requestAnimationFrame(update);
+}
+
+p1.next=randomPiece(); p2.next=randomPiece();
+resetPlayer(p1); resetPlayer(p2);
+update();
+</script>
+
+</body>
+</html>
